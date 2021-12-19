@@ -4,12 +4,30 @@
 using Markdown
 using InteractiveUtils
 
+# This Pluto notebook uses @bind for interactivity. When running this notebook outside of Pluto, the following 'mock version' of @bind gives bound variables a default value (instead of an error).
+macro bind(def, element)
+    quote
+        local iv = try Base.loaded_modules[Base.PkgId(Base.UUID("6e696c72-6542-2067-7265-42206c756150"), "AbstractPlutoDingetjes")].Bonds.initial_value catch; b -> missing; end
+        local el = $(esc(element))
+        global $(esc(def)) = Core.applicable(Base.get, el) ? Base.get(el) : iv(el)
+        el
+    end
+end
+
 # ╔═╡ f58f84e2-aee1-41ed-bed7-48c366d328aa
 using GLMakie
 
+# ╔═╡ 0a5993bc-8d57-4ea7-833c-9febea583220
+using PlutoUI
+
 # ╔═╡ 8de05d40-5c3b-11ec-00cf-694c5d9b45b4
 md"""
-# Engineering Math B Final Project
+# Engineering Math B ESE 319 Final Project
+
+### Quinten Giglio
+
+###### Fall 2021
+
 
 Implement a finite difference scheme for the 2D wave equation in Julia; plot the solution as an animated 3D plot.
 
@@ -30,11 +48,59 @@ md"""
 [Textbook Demo]("https://github.com/hplgit/fdm-book/blob/master/src/wave/wave2D_u0/wave2D_u0.py")
 """
 
+# ╔═╡ ccaf605e-2079-4f63-af8a-e54405d96ebb
+md"""
+This program solves the 2D Heat Equation 
+
+$\frac{\partial^2u}{\partial t^2} = \nabla c^2 u + f(x,y,t)$
+
+Given the initial conditions $I$, $V$
+
+$u(x,y, 0) = I(x,y)$
+
+$u_t(x,y,0) = V(x,y)$
+
+and the boundary is clamped at $u=0$ on all sides of a rectangle with dimensions $[0, L_x]\times [0, L_y]$
+
+also written as
+
+$u_{tt} = c^2 (u_{xx}+u_{yy}) + f(x,y,t)$
+
+using the finite difference method.
+
+
+The fundamental calculation is:
+```math
+\begin{align}
+u_{i,j}^{n+1} &= -u_{i,j}^{n-1} + 2u_{i,j}^{n}\\
+&+ C_x^2 (u_{i+1, j}^{n} - 2 u_{i,j}^{n} + u_{i-1,j}^{n})\\
+&+ C_y^2 (u_{i, j+1}^{n} - 2 u_{i,j}^{n} + u_{i,j-1}^{n})\\
+&+\Delta t^2 f_{i,j}^n
+\end{align}
+```
+
+
+where $C_x = c\frac{\Delta t}{\Delta x}$ , $C_y = c\frac{\Delta t}{\Delta y}$
+
+Because there are not enough previous points, the first calculation is unique:
+
+```math
+\begin{align}
+u_{i,j}^{2} &= u_{i,j}^{1} + \Delta t V_{i,j}\\
+&+ \frac{1}{2}C_x^2 (u_{i+1, j}^{1} - 2 u_{i,j}^{1} + u_{i-1,j}^{1})\\
+&+ C_y^2 (u_{i, j+1}^{1} - 2 u_{i,j}^{1} + u_{i,j-1}^{1})\\
+&+\Delta t^2 f_{i,j}^1
+\end{align}
+```
+Note that because this program is written in Julia $n = 1, 2, 3...$ for $t =0, 0+\Delta t, 0+2\Delta t...$
+
+"""
+
 # ╔═╡ 6f200a4b-1a8c-4f16-a03e-6104239390c8
 c = 1.0 #speed of sound
 
 # ╔═╡ d6674072-4566-4aa9-aeda-4a9ab21bb5d0
-L = 10.0
+L = 10.0 # length of plate sides
 
 # ╔═╡ 76b797e3-150d-4b5d-8087-24a64a0e2d75
 T = 200.0 #time in seconds
@@ -58,22 +124,22 @@ dt = sl/2
 #1.1 is arbitrary. smaller timesteps will make the simulation take longer but will increase accuracy
 
 # ╔═╡ b69a3726-e85d-4de7-8198-b82fe0bd9d26
-t = 0:dt:T
+t = 0:dt:T # time from 0 to T with step size dt
 
 # ╔═╡ 8180b188-0b93-48f9-ba16-e85c13a4fac9
-cx2 = (c*dt/dx)^2
-
-# ╔═╡ 62ed7ef8-d020-4761-95dd-f5ca6b78fb1d
-cy2 = (c*dt/dy)^2
-
-# ╔═╡ 7c3ab74a-68ba-4c81-9865-df846b486c6f
-dt2 = dt^2
+begin 
+	cx2 = (c*dt/dx)^2
+	cy2 = (c*dt/dy)^2
+	dt2 = dt^2
+	# precomputing these values will speed up the loops
+end;
 
 # ╔═╡ 617fa65c-a852-407f-9e53-7c6e22f92348
 begin
-	#I = [5exp(-.5(xi-L/2)^2 - .5(yi-L/2)^2) for xi in x, yi in y] 
-	I = [5exp(-.5(xi)^2 - .5(yi)^2) for xi in x, yi in y]
+	I = [5exp(-.5(xi-L/2)^2 - .5(yi-L/2)^2) for xi in x, yi in y] 
+	#I = [5exp(-.5(xi)^2 - .5(yi)^2) for xi in x, yi in y]
 	#initial conditions, u(x,y,0) = gaussian distribution
+	# comment/uncomment the other initial condition to change
 	surface(x,y,I)
 end
 
@@ -91,41 +157,54 @@ ux0 = uxL = zeros(length(x))# x Boundary conditions, u(0,y,t) = u(L,y,t) = 0;
 uy0 = uyL = zeros(length(y))# y boundary conditons, u(x,0,t) = u(x,L,t) = 0;
 
 # ╔═╡ 504b8708-0845-4719-97ff-2f016c5f1ca6
-u = zeros(length(x), length(y), length(t));
+u = zeros(length(x), length(y), length(t)); #creating a matrix of the size needed
 
 # ╔═╡ ff91e0be-93c2-4a26-b061-88de3e78769b
 md"""
- $u_{i,j}^{n+1}$ corresponds to u[i,j]
+ $u_{i,j}^{n+1}$ corresponds to u[i,j, n+1]
 
- $u_{i,j}^n$ to u_n[i,j]
+ $u_{i,j}^n$ to u[i,j, n]
 
- $u_{i,j}^{n-1}$ to u_nm1[i,j].
+ $u_{i,j}^{n-1}$ to u[i,j, n-1].
 
 """
 
+# ╔═╡ fc1bf28a-82ee-4b75-8340-b63ebae69baa
+md"""
+$u(x,y,0) = I$
+
+$n=1 \implies t=0$
+"""
+
 # ╔═╡ 680711e3-3afd-4a95-8dbe-5915ce3ec798
-u[:, :, 1] = I;
+u[:, :, 1] = I; # setting the first element equal to the initial condition 
 
 # ╔═╡ 8d481fdd-d26f-42a0-8ecf-09deffd36473
 begin
+	# Set boundaries (which are defined as 0 but could be changed above)
 	u[1, 1:end, 1] = ux0
 	u[end, 1:end, 1] = uxL
 	u[1:end, 1, 1] = uy0 
 	u[1:end, end, 1] = uyL
 	# First Step
-	for i in 2:length(x)-1
-		for j in 2:length(y)-1
+	for i in 2:length(x)-1 # dont include the edges in x
+		for j in 2:length(y)-1 # dont include the edges in y
 			u_xx = u[i+1,j,1] - 2*u[i,j,1] + u[i-1,j,1]
 			u_yy = u[i,j+1,1] - 2*u[i,j,1] + u[i,j-1,1]
 			u[i, j, 2] = u[i,j,1] + dt*V[i,j] + 0.5*cx2*u_xx + 0.5*cy2*u_yy 
-			#+ 0.5*dt2*f(1)[i,j]
+			#+ 0.5*dt2*f(1)[i,j] 
+			# commenting this term if there is no forcing makes the loop A LOT faster
 		end
 	end
+	# insist boundaries stay clamped
 	u[1, 1:end, 2] = ux0
 	u[end, 1:end, 2] = uxL
 	u[1:end, 1, 2] = uy0 
 	u[1:end, end, 2] = uyL
-	for n in 2:length(t)-1
+	for n in 2:length(t)-1 
+		# starting the main loop for the time period
+		# now that the initial 2 states have been created
+		# this calculates u(n+1) for each n so as to mimic the theory notation
 		for i in 2:length(x)-1
 			for j in 2:length(y)-1
 				u_xx = u[i-1, j, n] - 2*u[i, j, n] + u[i+1, j, n]
@@ -134,6 +213,7 @@ begin
 				#+ dt2*f(n)[i,j]
 			end
 		end
+		# insist boundaries stay clamped
 		u[1, 1:end, n+1] = ux0
 		u[end, 1:end, n+1] = uxL
 		u[1:end, 1, n+1] = uy0 
@@ -143,44 +223,40 @@ end
 
 # ╔═╡ 45e26170-1447-4574-90dd-827e2c6abc58
 md"""
-Remove ';' to see snapshots
+# Snap Shots
+
+move the slider for fun
 """
 
-# ╔═╡ 91f36a13-193d-4084-a659-d8adc11ab690
-surface(x,y, u[:, :, 2]);
-
-# ╔═╡ e7d6a61a-b3a4-4006-9c61-f2ee49ef4cd7
-surface(x,y, u[:, :, 1]);
+# ╔═╡ 87500bd2-7e19-4732-94e5-571f695f9e42
+@bind p PlutoUI.Slider(1:1:300, default=200)
 
 # ╔═╡ fa9a54c7-5654-4be0-b936-a2b6f2990c3f
-surface(x,y, u[:, :, 35])
+surface(x,y, u[:, :, p])
 
 # ╔═╡ f3799269-971d-4cb5-aff9-355f14a3e2ae
 size(u)
 
 # ╔═╡ 31f7fa8c-8de0-4c64-9f00-e741e6c20edf
 begin
-	#plotting code
-	#This code is confusing to me. I would recommend reading more about it on in the GLMakie documentation
-	#https://makie.juliaplots.org/stable/documentation/animation/index.html
-	#Plotting takes a long time the first time you run it in a new julia session. Be patient
-	n = Node(1)
-	zs = @lift(u[:,:,$n])
-	fig = surface(x, y, zs)
-	nvals = 1:length(t)
-	record(fig, "GaussianHeat200s.mp4", nvals; framerate = 24) do nval
-	    n[] = nval
+	n = Node(1)#this is the variable to update the frames
+	zs = @lift(u[:,:,$n])# this is how the variable updates the frames
+	fig = surface(x, y, zs) # this is what is plotted
+	nvals = 1:length(t) # this is how long to plot for
+	record(fig, "GaussianHeat200s.mp4", nvals; framerate = 60) do nval
+	    n[] = nval # this is magic that saves a video file
 	end
-	
 end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
 GLMakie = "e9467ef8-e4e7-5192-8a1a-b1aee30e663a"
+PlutoUI = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
 
 [compat]
 GLMakie = "~0.4.7"
+PlutoUI = "~0.7.25"
 """
 
 # ╔═╡ 00000000-0000-0000-0000-000000000002
@@ -192,6 +268,12 @@ deps = ["LinearAlgebra"]
 git-tree-sha1 = "485ee0867925449198280d4af84bdb46a2a404d0"
 uuid = "621f4979-c628-5d54-868e-fcf4e3e8185c"
 version = "1.0.1"
+
+[[AbstractPlutoDingetjes]]
+deps = ["Pkg"]
+git-tree-sha1 = "abb72771fd8895a7ebd83d5632dc4b989b022b5b"
+uuid = "6e696c72-6542-2067-7265-42206c756150"
+version = "1.1.2"
 
 [[AbstractTrees]]
 git-tree-sha1 = "03e0550477d86222521d254b741d470ba17ea0b5"
@@ -298,9 +380,9 @@ version = "0.12.8"
 
 [[Compat]]
 deps = ["Base64", "Dates", "DelimitedFiles", "Distributed", "InteractiveUtils", "LibGit2", "Libdl", "LinearAlgebra", "Markdown", "Mmap", "Pkg", "Printf", "REPL", "Random", "SHA", "Serialization", "SharedArrays", "Sockets", "SparseArrays", "Statistics", "Test", "UUIDs", "Unicode"]
-git-tree-sha1 = "dce3e3fea680869eaa0b774b2e8343e9ff442313"
+git-tree-sha1 = "44c37b4636bc54afac5c574d2d02b625349d6582"
 uuid = "34da2185-b29b-5c13-b0c7-acf172513d20"
-version = "3.40.0"
+version = "3.41.0"
 
 [[CompilerSupportLibraries_jll]]
 deps = ["Artifacts", "Libdl"]
@@ -523,6 +605,23 @@ git-tree-sha1 = "129acf094d168394e80ee1dc4bc06ec835e510a3"
 uuid = "2e76f6c2-a576-52d4-95c1-20adfe4de566"
 version = "2.8.1+1"
 
+[[Hyperscript]]
+deps = ["Test"]
+git-tree-sha1 = "8d511d5b81240fc8e6802386302675bdf47737b9"
+uuid = "47d2ed2b-36de-50cf-bf87-49c2cf4b8b91"
+version = "0.0.4"
+
+[[HypertextLiteral]]
+git-tree-sha1 = "2b078b5a615c6c0396c77810d92ee8c6f470d238"
+uuid = "ac1192a8-f4b3-4bfe-ba22-af5b92cd3ab2"
+version = "0.9.3"
+
+[[IOCapture]]
+deps = ["Logging", "Random"]
+git-tree-sha1 = "f7be53659ab06ddc986428d3a9dcc95f6fa6705a"
+uuid = "b5f81e59-6552-4d32-b1f0-c071b021bf89"
+version = "0.2.2"
+
 [[IfElse]]
 git-tree-sha1 = "debdd00ffef04665ccbb3e150747a77560e8fad1"
 uuid = "615f187c-cbe4-4ef1-ba3b-2fcf58d6d173"
@@ -568,9 +667,9 @@ uuid = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
 
 [[Interpolations]]
 deps = ["AxisAlgorithms", "ChainRulesCore", "LinearAlgebra", "OffsetArrays", "Random", "Ratios", "Requires", "SharedArrays", "SparseArrays", "StaticArrays", "WoodburyMatrices"]
-git-tree-sha1 = "61aa005707ea2cebf47c8d780da8dc9bc4e0c512"
+git-tree-sha1 = "b15fc0a95c564ca2e0a7ae12c1f095ca848ceb31"
 uuid = "a98d9a8b-a2ab-59e6-89dd-64a1c18fca59"
-version = "0.13.4"
+version = "0.13.5"
 
 [[IntervalSets]]
 deps = ["Dates", "EllipsisNotation", "Statistics"]
@@ -706,14 +805,14 @@ uuid = "38a345b3-de98-5d2b-a5d3-14cd9215e700"
 version = "2.36.0+0"
 
 [[LinearAlgebra]]
-deps = ["Libdl", "libblastrampoline_jll"]
+deps = ["Libdl"]
 uuid = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 
 [[LogExpFunctions]]
 deps = ["ChainRulesCore", "ChangesOfVariables", "DocStringExtensions", "InverseFunctions", "IrrationalConstants", "LinearAlgebra"]
-git-tree-sha1 = "be9eef9f9d78cecb6f262f3c10da151a6c5ab827"
+git-tree-sha1 = "e5718a00af0ab9756305a0392832c8952c7426c1"
 uuid = "2ab3a3ac-af41-5b50-aa03-7779005ae688"
-version = "0.3.5"
+version = "0.3.6"
 
 [[Logging]]
 uuid = "56ddb016-857b-54e1-b83d-db4d58db5568"
@@ -791,9 +890,9 @@ version = "0.3.3"
 uuid = "14a3606d-f60d-562e-9121-12d972cd8159"
 
 [[NaNMath]]
-git-tree-sha1 = "bfe47e760d60b82b66b61d2d44128b62e3a369fb"
+git-tree-sha1 = "f755f36b19a5116bb580de457cda0c140153f283"
 uuid = "77ba4419-2d1f-58cd-9bb1-8ffee604a2e3"
-version = "0.3.5"
+version = "0.3.6"
 
 [[Netpbm]]
 deps = ["FileIO", "ImageCore"]
@@ -820,10 +919,6 @@ deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
 git-tree-sha1 = "7937eda4681660b4d6aeeecc2f7e1c81c8ee4e2f"
 uuid = "e7412a2a-1a6e-54c0-be00-318e2571c051"
 version = "1.3.5+0"
-
-[[OpenBLAS_jll]]
-deps = ["Artifacts", "CompilerSupportLibraries_jll", "Libdl"]
-uuid = "4536629a-c528-5b80-bd46-f80d51c5b363"
 
 [[OpenEXR]]
 deps = ["Colors", "FileIO", "OpenEXR_jll"]
@@ -896,9 +991,9 @@ version = "0.5.10"
 
 [[Parsers]]
 deps = ["Dates"]
-git-tree-sha1 = "ae4bbcadb2906ccc085cf52ac286dc1377dceccc"
+git-tree-sha1 = "d7fa6237da8004be601e19bd6666083056649918"
 uuid = "69de0a69-1ddd-5017-9359-2bf0b02dc9f0"
-version = "2.1.2"
+version = "2.1.3"
 
 [[Pixman_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
@@ -918,9 +1013,15 @@ version = "0.1.1"
 
 [[PlotUtils]]
 deps = ["ColorSchemes", "Colors", "Dates", "Printf", "Random", "Reexport", "Statistics"]
-git-tree-sha1 = "b084324b4af5a438cd63619fd006614b3b20b87b"
+git-tree-sha1 = "e4fe0b50af3130ddd25e793b471cb43d5279e3e6"
 uuid = "995b91a9-d308-5afd-9ec6-746e21dbc043"
-version = "1.0.15"
+version = "1.1.1"
+
+[[PlutoUI]]
+deps = ["AbstractPlutoDingetjes", "Base64", "ColorTypes", "Dates", "Hyperscript", "HypertextLiteral", "IOCapture", "InteractiveUtils", "JSON", "Logging", "Markdown", "Random", "Reexport", "UUIDs"]
+git-tree-sha1 = "93cf0910f09a9607add290a3a2585aa376b4feb6"
+uuid = "7f904dfe-b85e-4ff6-b463-dae2292396a8"
+version = "0.7.25"
 
 [[PolygonOps]]
 git-tree-sha1 = "77b3d3605fc1cd0b42d95eba87dfcd2bf67d5ff6"
@@ -954,7 +1055,7 @@ deps = ["InteractiveUtils", "Markdown", "Sockets", "Unicode"]
 uuid = "3fa0cd96-eef1-5676-8a61-b3b8758bbffb"
 
 [[Random]]
-deps = ["SHA", "Serialization"]
+deps = ["Serialization"]
 uuid = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 
 [[Ratios]]
@@ -976,9 +1077,9 @@ version = "0.1.3"
 
 [[Requires]]
 deps = ["UUIDs"]
-git-tree-sha1 = "4036a3bd08ac7e968e27c203d45f5fff15020621"
+git-tree-sha1 = "8f82019e525f4d5c669692772a6f4b0a58b06a6a"
 uuid = "ae029012-a4dd-5104-9daa-d747884805df"
-version = "1.1.3"
+version = "1.2.0"
 
 [[Rmath]]
 deps = ["Random", "Rmath_jll"]
@@ -1064,9 +1165,9 @@ version = "0.1.1"
 
 [[Static]]
 deps = ["IfElse"]
-git-tree-sha1 = "e7bc80dc93f50857a5d1e3c8121495852f407e6a"
+git-tree-sha1 = "7f5a513baec6f122401abfc8e9c074fdac54f6c1"
 uuid = "aedffcd0-7271-4cad-89d0-dc628f76c6d3"
-version = "0.4.0"
+version = "0.4.1"
 
 [[StaticArrays]]
 deps = ["LinearAlgebra", "Random", "Statistics"]
@@ -1117,9 +1218,9 @@ version = "1.0.1"
 
 [[Tables]]
 deps = ["DataAPI", "DataValueInterfaces", "IteratorInterfaceExtensions", "LinearAlgebra", "TableTraits", "Test"]
-git-tree-sha1 = "fed34d0e71b91734bf0a7e10eb1bb05296ddbcd0"
+git-tree-sha1 = "bb1064c9a84c52e277f1096cf41434b675cd368b"
 uuid = "bd369af6-aec1-5ad0-b16a-f7cc5008161c"
-version = "1.6.0"
+version = "1.6.1"
 
 [[Tar]]
 deps = ["ArgTools", "SHA"]
@@ -1272,10 +1373,6 @@ git-tree-sha1 = "5982a94fcba20f02f42ace44b9894ee2b140fe47"
 uuid = "0ac62f75-1d6f-5e53-bd7c-93b484bb37c0"
 version = "0.15.1+0"
 
-[[libblastrampoline_jll]]
-deps = ["Artifacts", "Libdl", "OpenBLAS_jll"]
-uuid = "8e850b90-86db-534c-a0d3-1478176c7d93"
-
 [[libfdk_aac_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]
 git-tree-sha1 = "daacc84a041563f965be61859a36e17c4e4fcd55"
@@ -1318,6 +1415,7 @@ version = "3.5.0+0"
 # ╔═╡ Cell order:
 # ╟─8de05d40-5c3b-11ec-00cf-694c5d9b45b4
 # ╟─8a705c39-c12e-4d93-bd27-e69141f040c7
+# ╟─ccaf605e-2079-4f63-af8a-e54405d96ebb
 # ╠═f58f84e2-aee1-41ed-bed7-48c366d328aa
 # ╠═6f200a4b-1a8c-4f16-a03e-6104239390c8
 # ╠═d6674072-4566-4aa9-aeda-4a9ab21bb5d0
@@ -1329,8 +1427,6 @@ version = "3.5.0+0"
 # ╠═5b20f65f-a34e-43d4-abfc-efc79f7e8db6
 # ╠═b69a3726-e85d-4de7-8198-b82fe0bd9d26
 # ╠═8180b188-0b93-48f9-ba16-e85c13a4fac9
-# ╠═62ed7ef8-d020-4761-95dd-f5ca6b78fb1d
-# ╠═7c3ab74a-68ba-4c81-9865-df846b486c6f
 # ╠═617fa65c-a852-407f-9e53-7c6e22f92348
 # ╠═8d3310bc-dbdc-4351-86b8-eda50cb757cc
 # ╠═08cc214e-93fe-4fcf-ac91-49479fd4c6a8
@@ -1338,11 +1434,12 @@ version = "3.5.0+0"
 # ╠═0e091acc-4862-4a92-9df0-f29cee721aad
 # ╠═504b8708-0845-4719-97ff-2f016c5f1ca6
 # ╟─ff91e0be-93c2-4a26-b061-88de3e78769b
+# ╟─fc1bf28a-82ee-4b75-8340-b63ebae69baa
 # ╠═680711e3-3afd-4a95-8dbe-5915ce3ec798
 # ╠═8d481fdd-d26f-42a0-8ecf-09deffd36473
 # ╠═45e26170-1447-4574-90dd-827e2c6abc58
-# ╠═91f36a13-193d-4084-a659-d8adc11ab690
-# ╠═e7d6a61a-b3a4-4006-9c61-f2ee49ef4cd7
+# ╠═0a5993bc-8d57-4ea7-833c-9febea583220
+# ╠═87500bd2-7e19-4732-94e5-571f695f9e42
 # ╠═fa9a54c7-5654-4be0-b936-a2b6f2990c3f
 # ╠═f3799269-971d-4cb5-aff9-355f14a3e2ae
 # ╠═31f7fa8c-8de0-4c64-9f00-e741e6c20edf
